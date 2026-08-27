@@ -15,6 +15,13 @@ AGENT_NETWORK = "pier-egress-internal"
 BACKEND_NETWORK = "pier-chain-backend"
 
 
+def preserve_shared_images(command: list[str]) -> list[str]:
+    """Keep task images when Pier tears down a trial's Compose project."""
+    if command[:3] == ["down", "--rmi", "all"]:
+        return ["down", *command[3:]]
+    return command
+
+
 def add_local_services(
     compose: dict[str, Any],
     *,
@@ -274,3 +281,18 @@ class LocalTaskDockerEnvironment(DockerEnvironment):
             bypass.update(part.strip() for part in result.get(key, "").split(","))
             result[key] = ",".join(sorted(part for part in bypass if part))
         return result
+
+    async def _run_docker_compose_command(
+        self,
+        command: list[str],
+        check: bool = True,
+        timeout_sec: int | None = None,
+    ):
+        # Pier normally passes ``--rmi all`` when deleting a trial. The local
+        # Anvil and source gateway reuse the task image, so deleting it races
+        # with other trials that are starting from the same image.
+        return await super()._run_docker_compose_command(
+            preserve_shared_images(command),
+            check=check,
+            timeout_sec=timeout_sec,
+        )

@@ -8,6 +8,7 @@ from runner.local_environment import (
     BACKEND_NETWORK,
     POLICY_SERVICE,
     add_local_services,
+    preserve_shared_images,
 )
 
 
@@ -28,6 +29,18 @@ def local_compose() -> dict:
 
 
 class ComposePolicyTests(unittest.TestCase):
+    def test_trial_cleanup_preserves_shared_task_images(self):
+        self.assertEqual(
+            preserve_shared_images(
+                ["down", "--rmi", "all", "--volumes", "--remove-orphans"]
+            ),
+            ["down", "--volumes", "--remove-orphans"],
+        )
+        self.assertEqual(
+            preserve_shared_images(["down", "--remove-orphans"]),
+            ["down", "--remove-orphans"],
+        )
+
     def test_services_are_airgapped_and_separated(self):
         compose = local_compose()
         services = compose["services"]
