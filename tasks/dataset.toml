@@ -1,0 +1,83 @@
+[[tasks]]
+name = "rl-exploits/01-abecedarian"
+path = "01-abecedarian"
+
+[[tasks]]
+name = "rl-exploits/12-kestrel"
+path = "12-kestrel"
+
+[[tasks]]
+name = "rl-exploits/13-lantern"
+path = "13-lantern"
+
+[[tasks]]
+name = "rl-exploits/14-marrow"
+path = "14-marrow"
+
+[[tasks]]
+name = "rl-exploits/15-nimbus"
+path = "15-nimbus"
+
+[[tasks]]
+name = "rl-exploits/16-opal"
+path = "16-opal"
+
+[[tasks]]
+name = "rl-exploits/17-praxis"
+path = "17-praxis"
+
+[[tasks]]
+name = "rl-exploits/18-quartz"
+path = "18-quartz"
+
+[[tasks]]
+name = "rl-exploits/19-riven"
+path = "19-riven"
+
+[[tasks]]
+name = "rl-exploits/20-sable"
+path = "20-sable"
+
+[[tasks]]
+name = "rl-exploits/21-talus"
+path = "21-talus"
+
+[[tasks]]
+name = "rl-exploits/22-umbra"
+path = "22-umbra"
+
+[[tasks]]
+name = "rl-exploits/23-verdant"
+path = "23-verdant"
+
+[[tasks]]
+name = "rl-exploits/24-willow"
+path = "24-willow"
+
+[[tasks]]
+name = "rl-exploits/25-xenon"
+path = "25-xenon"
+
+[[tasks]]
+name = "rl-exploits/26-yarrow"
+path = "26-yarrow"
+
+[[tasks]]
+name = "rl-exploits/27-zephyr"
+path = "27-zephyr"
+
+[[tasks]]
+name = "rl-exploits/28-alder"
+path = "28-alder"
+
+[[tasks]]
+name = "rl-exploits/29-bracken"
+path = "29-bracken"
+
+[[tasks]]
+name = "rl-exploits/30-cinder"
+path = "30-cinder"
+
+[[tasks]]
+name = "rl-exploits/31-dovetail"
+path = "31-dovetail"
