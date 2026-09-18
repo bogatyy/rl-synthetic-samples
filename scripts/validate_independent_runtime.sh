@@ -10,25 +10,25 @@ port_base=${RUNTIME_PORT_BASE:-24000}
 tasks=(
   01-abecedarian
   12-kestrel
-  13-lantern
   14-marrow
   15-nimbus
   16-opal
   17-praxis
   18-quartz
-  19-riven
-  20-sable
   21-talus
-  22-umbra
   23-verdant
   24-willow
   25-xenon
-  26-yarrow
-  27-zephyr
-  28-alder
   29-bracken
   30-cinder
-  31-dovetail
+  34-garnet
+  35-harbor
+  41-nacre
+  45-rowan
+  46-saffron
+  52-yonder
+  119-org-riven
+  120-org-sable
 )
 
 runtime_root=$(mktemp -d /tmp/rl-independent-runtime.XXXXXX)
@@ -43,6 +43,13 @@ trap cleanup EXIT
   echo "RUNTIME_PARALLELISM must be a positive integer" >&2
   exit 2
 }
+
+# Rebuild through Docker's cache so every task image is based on the current
+# shared core rather than an older local tag left by a previous checkout.
+# Isolated worktrees may opt out when another checkout owns the shared tags.
+if [[ ${SKIP_IMAGE_BUILD:-0} != 1 ]]; then
+  "$repo_root/scripts/build_task_images.sh" "${tasks[@]}"
+fi
 
 run_one() {
   local task=$1

@@ -7,25 +7,25 @@ parallelism=${EVAL_PARALLELISM:-6}
 default_tasks=(
   01-abecedarian
   12-kestrel
-  13-lantern
   14-marrow
   15-nimbus
   16-opal
   17-praxis
   18-quartz
-  19-riven
-  20-sable
   21-talus
-  22-umbra
   23-verdant
   24-willow
   25-xenon
-  26-yarrow
-  27-zephyr
-  28-alder
   29-bracken
   30-cinder
-  31-dovetail
+  34-garnet
+  35-harbor
+  41-nacre
+  45-rowan
+  46-saffron
+  52-yonder
+  119-org-riven
+  120-org-sable
 )
 
 if (( $# )); then

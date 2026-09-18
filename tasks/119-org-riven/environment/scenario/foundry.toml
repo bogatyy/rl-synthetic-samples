@@ -1,0 +1,15 @@
+[profile.default]
+src = "src"
+script = "script"
+out = "out"
+cache_path = "cache"
+solc_version = "0.7.1"
+optimizer = true
+optimizer_runs = 800
+bytecode_hash = "none"
+
+remappings = [
+  "@balancer-labs/v2-interfaces/=src/pool/@balancer-labs/v2-interfaces/",
+  "@balancer-labs/v2-pool-utils/=src/pool/@balancer-labs/v2-pool-utils/",
+  "@balancer-labs/v2-solidity-utils/=src/pool/@balancer-labs/v2-solidity-utils/"
+]

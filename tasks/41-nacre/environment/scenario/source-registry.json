@@ -1,0 +1,36 @@
+{
+  "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512": {
+    "path": "/opt/scenario/src/LocalChainlinkFeed.sol",
+    "name": "LocalChainlinkFeed",
+    "sources": {
+      "LocalChainlinkFeed.sol": "/opt/scenario/src/LocalChainlinkFeed.sol"
+    }
+  },
+  "0xa16e02e87b7454126e5e10d957a927a7f5b5d2be": {
+    "path": "/opt/scenario/src/verified/WBTC.sol",
+    "name": "WBTC",
+    "sources": {
+      "WBTC.sol": "/opt/scenario/src/verified/WBTC.sol"
+    }
+  },
+  "0xeebe00ac0756308ac4aabfd76c05c4f3088b8883": {
+    "path": "/opt/scenario/src/verified/morpho/src/Morpho.sol",
+    "name": "Morpho",
+    "sources": {
+      "src/Morpho.sol": "/opt/scenario/src/verified/morpho/src/Morpho.sol",
+      "src/interfaces/IERC20.sol": "/opt/scenario/src/verified/morpho/src/interfaces/IERC20.sol",
+      "src/interfaces/IIrm.sol": "/opt/scenario/src/verified/morpho/src/interfaces/IIrm.sol",
+      "src/interfaces/IMorpho.sol": "/opt/scenario/src/verified/morpho/src/interfaces/IMorpho.sol",
+      "src/interfaces/IMorphoCallbacks.sol": "/opt/scenario/src/verified/morpho/src/interfaces/IMorphoCallbacks.sol",
+      "src/interfaces/IOracle.sol": "/opt/scenario/src/verified/morpho/src/interfaces/IOracle.sol",
+      "src/libraries/ConstantsLib.sol": "/opt/scenario/src/verified/morpho/src/libraries/ConstantsLib.sol",
+      "src/libraries/ErrorsLib.sol": "/opt/scenario/src/verified/morpho/src/libraries/ErrorsLib.sol",
+      "src/libraries/EventsLib.sol": "/opt/scenario/src/verified/morpho/src/libraries/EventsLib.sol",
+      "src/libraries/MarketParamsLib.sol": "/opt/scenario/src/verified/morpho/src/libraries/MarketParamsLib.sol",
+      "src/libraries/MathLib.sol": "/opt/scenario/src/verified/morpho/src/libraries/MathLib.sol",
+      "src/libraries/SafeTransferLib.sol": "/opt/scenario/src/verified/morpho/src/libraries/SafeTransferLib.sol",
+      "src/libraries/SharesMathLib.sol": "/opt/scenario/src/verified/morpho/src/libraries/SharesMathLib.sol",
+      "src/libraries/UtilsLib.sol": "/opt/scenario/src/verified/morpho/src/libraries/UtilsLib.sol"
+    }
+  }
+}

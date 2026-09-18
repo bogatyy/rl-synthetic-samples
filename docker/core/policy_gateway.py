@@ -79,11 +79,83 @@ def validate_source_query(path: str, chain_id: str = "1") -> str:
     return address
 
 
+def _source_metadata(
+    metadata: dict[str, Any] | None,
+) -> tuple[str, str, str, int, str, str]:
+    metadata = metadata or {}
+    language = metadata.get("language", "Solidity")
+    compiler_version = metadata.get(
+        "compiler_version",
+        os.environ.get(
+            "LOCAL_SOURCE_COMPILER_VERSION", "v0.8.28+commit.7893614a"
+        ),
+    )
+    optimizer_used_value = metadata.get(
+        "optimization_used", os.environ.get("LOCAL_SOURCE_OPTIMIZATION_USED", "1")
+    )
+    if isinstance(optimizer_used_value, bool):
+        optimizer_used = "1" if optimizer_used_value else "0"
+    elif (
+        isinstance(optimizer_used_value, (int, str))
+        and optimizer_used_value in {0, 1, "0", "1"}
+    ):
+        optimizer_used = str(optimizer_used_value)
+    else:
+        optimizer_used = ""
+    optimizer_runs_value = metadata.get(
+        "optimizer_runs", os.environ.get("LOCAL_SOURCE_OPTIMIZER_RUNS", "200")
+    )
+    try:
+        if isinstance(optimizer_runs_value, bool) or not isinstance(
+            optimizer_runs_value, (int, str)
+        ):
+            raise ValueError
+        optimizer_runs = int(optimizer_runs_value)
+    except (TypeError, ValueError):
+        optimizer_runs = -1
+    evm_version = metadata.get(
+        "evm_version", os.environ.get("LOCAL_SOURCE_EVM_VERSION", "cancun")
+    )
+    license_type = metadata.get(
+        "license_type", os.environ.get("LOCAL_SOURCE_LICENSE_TYPE", "MIT")
+    )
+    printable_metadata = (compiler_version, evm_version, license_type)
+    if (
+        language not in {"Solidity", "Vyper"}
+        or not all(
+            isinstance(value, str)
+            and 0 < len(value) <= 128
+            and all(32 <= ord(character) < 127 for character in value)
+            for value in printable_metadata
+        )
+        or optimizer_used not in {"0", "1"}
+        or optimizer_runs < 0
+    ):
+        raise PolicyError("invalid local source compiler metadata")
+    return (
+        language,
+        compiler_version,
+        optimizer_used,
+        optimizer_runs,
+        evm_version,
+        license_type,
+    )
+
+
 def local_source_response(
     path: str,
     contract_name: str,
     sources: dict[str, str] | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> bytes:
+    (
+        language,
+        compiler_version,
+        optimizer_used,
+        optimizer_runs,
+        evm_version,
+        license_type,
+    ) = _source_metadata(metadata)
     source_path = pathlib.Path(path)
     source = source_path.read_text(encoding="utf-8")
     source_bytes = len(source.encode())
@@ -96,11 +168,14 @@ def local_source_response(
             source_entries[logical_name] = {"content": content}
         source_code = json.dumps(
             {
-                "language": "Solidity",
+                "language": language,
                 "sources": source_entries,
                 "settings": {
-                    "optimizer": {"enabled": False, "runs": 0},
-                    "evmVersion": "cancun",
+                    "optimizer": {
+                        "enabled": optimizer_used == "1",
+                        "runs": optimizer_runs,
+                    },
+                    "evmVersion": evm_version,
                 },
             },
             separators=(",", ":"),
@@ -116,13 +191,14 @@ def local_source_response(
                     "SourceCode": source_code,
                     "ABI": "[]",
                     "ContractName": contract_name,
-                    "CompilerVersion": "v0.8.28+commit.7893614a",
-                    "OptimizationUsed": "1",
-                    "Runs": "200",
+                    "CompilerType": "vyper" if language == "Vyper" else "solc",
+                    "CompilerVersion": compiler_version,
+                    "OptimizationUsed": optimizer_used,
+                    "Runs": str(optimizer_runs),
                     "ConstructorArguments": "",
-                    "EVMVersion": "cancun",
+                    "EVMVersion": evm_version,
                     "Library": "",
-                    "LicenseType": "MIT",
+                    "LicenseType": license_type,
                     "Proxy": "0",
                     "Implementation": "",
                     "SwarmSource": "",
@@ -136,10 +212,53 @@ def local_source_response(
     return body
 
 
+def source_bundle_from_root(
+    path: str, language: str = "Solidity"
+) -> dict[str, str]:
+    """Build a standard-JSON source map without exposing trusted setup files."""
+    suffixes = {"Solidity": ".sol", "Vyper": ".vy"}
+    suffix = suffixes.get(language)
+    if suffix is None:
+        raise ValueError("unsupported local source language")
+    root = pathlib.Path(path)
+    if not root.is_dir():
+        raise ValueError("local source bundle root is not a directory")
+    excluded = {
+        ".git",
+        "broadcast",
+        "cache",
+        "out",
+        "script",
+        "scripts",
+        "solution",
+        "solutions",
+        "test",
+        "tests",
+    }
+    bundle: dict[str, str] = {}
+    for source in sorted(root.rglob(f"*{suffix}")):
+        relative = source.relative_to(root)
+        if any(part in excluded for part in relative.parts):
+            continue
+        if source.is_symlink() or not source.is_file():
+            continue
+        logical_name = relative.as_posix()
+        if (
+            not logical_name.endswith(suffix)
+            or ".." in relative.parts
+            or any(ord(character) < 32 for character in logical_name)
+        ):
+            raise ValueError("local source bundle contains an invalid path")
+        bundle[logical_name] = str(source)
+    if not bundle:
+        raise ValueError(f"local source bundle root contains no {language} sources")
+    return bundle
+
+
 def load_local_source_registry(
     path: str,
-) -> dict[str, tuple[str, str, dict[str, str] | None]]:
-    """Load an address -> (source path, contract name, source bundle) registry.
+) -> dict[str, tuple[str, str, dict[str, str] | None, dict[str, Any]]]:
+    """Load address -> (path, name, bundle, metadata) registry entries.
 
     The registry lives in the trusted task image.  It lets a local scenario
     expose separately verified contracts without copying its deployment
@@ -149,7 +268,11 @@ def load_local_source_registry(
     decoded = json.loads(registry_path.read_text(encoding="utf-8"))
     if not isinstance(decoded, dict) or not decoded:
         raise ValueError("local source registry must be a non-empty object")
-    result: dict[str, tuple[str, str, dict[str, str] | None]] = {}
+    scenario_root = pathlib.Path("/opt/scenario").resolve()
+    scenario_source_root = (scenario_root / "src").resolve()
+    result: dict[
+        str, tuple[str, str, dict[str, str] | None, dict[str, Any]]
+    ] = {}
     for address, entry in decoded.items():
         if not isinstance(address, str) or not ADDRESS_RE.fullmatch(address):
             raise ValueError("local source registry contains an invalid address")
@@ -158,31 +281,87 @@ def load_local_source_registry(
         source_path = entry.get("path")
         contract_name = entry.get("name")
         sources = entry.get("sources")
+        sources_root = entry.get("sources_root")
+        metadata_fields = {
+            "language",
+            "compiler_version",
+            "optimization_used",
+            "optimizer_runs",
+            "evm_version",
+            "license_type",
+        }
+        if set(entry) - {"path", "name", "sources", "sources_root"} - metadata_fields:
+            raise ValueError("local source registry entry has unknown fields")
+        if sources is not None and sources_root is not None:
+            raise ValueError("configure sources or sources_root, not both")
+        if not isinstance(source_path, str):
+            raise ValueError("local source registry entry is invalid")
+        language = entry.get("language", "Solidity")
+        suffix = {"Solidity": ".sol", "Vyper": ".vy"}.get(language)
+        if suffix is None or not source_path.endswith(suffix):
+            raise ValueError("local source registry entry has invalid language")
+        resolved_source_path = pathlib.Path(source_path).resolve()
         if (
-            not isinstance(source_path, str)
-            or not source_path.startswith("/opt/scenario/")
+            not resolved_source_path.is_relative_to(scenario_source_root)
+            or resolved_source_path == scenario_source_root
             or not isinstance(contract_name, str)
             or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", contract_name)
         ):
             raise ValueError("local source registry entry is invalid")
-        if not pathlib.Path(source_path).is_file():
+        if not resolved_source_path.is_file():
             raise ValueError("local source registry references a missing file")
+        source_path = str(resolved_source_path)
         source_bundle = None
         if sources is not None:
             if not isinstance(sources, dict) or not sources:
                 raise ValueError("local source bundle must be a non-empty object")
             source_bundle = {}
             for logical_name, bundled_path in sources.items():
+                if not isinstance(logical_name, str):
+                    raise ValueError("local source bundle entry is invalid")
+                logical_path = pathlib.PurePosixPath(logical_name)
                 if (
-                    not isinstance(logical_name, str)
-                    or not re.fullmatch(r"[A-Za-z0-9_./-]+\.sol", logical_name)
+                    logical_path.is_absolute()
+                    or ".." in logical_path.parts
+                    or not logical_name.endswith(suffix)
+                    or any(ord(character) < 32 for character in logical_name)
                     or not isinstance(bundled_path, str)
-                    or not bundled_path.startswith("/opt/scenario/src/")
-                    or not pathlib.Path(bundled_path).is_file()
                 ):
                     raise ValueError("local source bundle entry is invalid")
-                source_bundle[logical_name] = bundled_path
-        result[address.lower()] = (source_path, contract_name, source_bundle)
+                resolved_bundled_path = pathlib.Path(bundled_path).resolve()
+                if (
+                    not resolved_bundled_path.is_relative_to(scenario_source_root)
+                    or resolved_bundled_path == scenario_source_root
+                    or not resolved_bundled_path.is_file()
+                ):
+                    raise ValueError("local source bundle entry is invalid")
+                source_bundle[logical_name] = str(resolved_bundled_path)
+        elif sources_root is not None:
+            if not isinstance(sources_root, str):
+                raise ValueError("local source bundle root is invalid")
+            resolved_sources_root = pathlib.Path(sources_root).resolve()
+            if not (
+                resolved_sources_root == scenario_root
+                or resolved_sources_root.is_relative_to(scenario_root)
+            ):
+                raise ValueError("local source bundle root is invalid")
+            source_bundle = source_bundle_from_root(
+                str(resolved_sources_root), language
+            )
+            if source_path not in source_bundle.values():
+                raise ValueError("primary source is outside the source bundle root")
+        metadata = {
+            field: entry[field] for field in metadata_fields if field in entry
+        }
+        # Validate metadata eagerly instead of letting a malformed registry
+        # fail only when its address is first requested.
+        _source_metadata(metadata)
+        result[address.lower()] = (
+            source_path,
+            contract_name,
+            source_bundle,
+            metadata,
+        )
     return result
 
 

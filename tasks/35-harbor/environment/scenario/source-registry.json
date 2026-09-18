@@ -1,0 +1,52 @@
+{
+  "0x5fbdb2315678afecb367f032d93f642f64180aa3": {
+    "path": "/opt/scenario/src/index/PortfolioIndexVault.sol",
+    "name": "PortfolioIndexVault",
+    "sources": {
+      "index/PortfolioIndexVault.sol": "/opt/scenario/src/index/PortfolioIndexVault.sol",
+      "lending/AaveStylePool.sol": "/opt/scenario/src/lending/AaveStylePool.sol",
+      "token/ProtocolERC20.sol": "/opt/scenario/src/token/ProtocolERC20.sol",
+      "vault/ComponentVault.sol": "/opt/scenario/src/vault/ComponentVault.sol"
+    }
+  },
+  "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512": {
+    "path": "/opt/scenario/src/token/ProtocolERC20.sol", "name": "SettlementToken",
+    "sources": {"token/ProtocolERC20.sol": "/opt/scenario/src/token/ProtocolERC20.sol"}
+  },
+  "0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0": {
+    "path": "/opt/scenario/src/vault/ComponentVault.sol", "name": "ComponentVaultFactory",
+    "sources": {"token/ProtocolERC20.sol": "/opt/scenario/src/token/ProtocolERC20.sol", "vault/ComponentVault.sol": "/opt/scenario/src/vault/ComponentVault.sol"}
+  },
+  "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6": {
+    "path": "/opt/scenario/src/lending/AaveStylePool.sol", "name": "PoolAddressesProvider",
+    "sources": {"token/ProtocolERC20.sol": "/opt/scenario/src/token/ProtocolERC20.sol", "lending/AaveStylePool.sol": "/opt/scenario/src/lending/AaveStylePool.sol"}
+  },
+  "0x8a791620dd6260079bf849dc5567adc3f2fdc318": {
+    "path": "/opt/scenario/src/lending/AaveStylePool.sol", "name": "AaveStylePool",
+    "sources": {"token/ProtocolERC20.sol": "/opt/scenario/src/token/ProtocolERC20.sol", "lending/AaveStylePool.sol": "/opt/scenario/src/lending/AaveStylePool.sol"}
+  },
+  "0x610178da211fef7d417bc0e6fed39f05609ad788": {
+    "path": "/opt/scenario/src/lending/AaveStylePool.sol", "name": "ReserveAToken",
+    "sources": {"token/ProtocolERC20.sol": "/opt/scenario/src/token/ProtocolERC20.sol", "lending/AaveStylePool.sol": "/opt/scenario/src/lending/AaveStylePool.sol"}
+  },
+  "0x75537828f2ce51be7289709686a69cbfdbb714f1": {
+    "path": "/opt/scenario/src/vault/ComponentVault.sol", "name": "ComponentVault",
+    "sources": {"token/ProtocolERC20.sol": "/opt/scenario/src/token/ProtocolERC20.sol", "vault/ComponentVault.sol": "/opt/scenario/src/vault/ComponentVault.sol"}
+  },
+  "0xe451980132e65465d0a498c53f0b5227326dd73f": {
+    "path": "/opt/scenario/src/vault/ComponentVault.sol", "name": "ComponentVault",
+    "sources": {"token/ProtocolERC20.sol": "/opt/scenario/src/token/ProtocolERC20.sol", "vault/ComponentVault.sol": "/opt/scenario/src/vault/ComponentVault.sol"}
+  },
+  "0x5392a33f7f677f59e833febf4016cddd88ff9e67": {
+    "path": "/opt/scenario/src/vault/ComponentVault.sol", "name": "ComponentVault",
+    "sources": {"token/ProtocolERC20.sol": "/opt/scenario/src/token/ProtocolERC20.sol", "vault/ComponentVault.sol": "/opt/scenario/src/vault/ComponentVault.sol"}
+  },
+  "0xa783ccd72e34a174cca57a6d9a74904d0bec05a9": {
+    "path": "/opt/scenario/src/vault/ComponentVault.sol", "name": "ComponentVault",
+    "sources": {"token/ProtocolERC20.sol": "/opt/scenario/src/token/ProtocolERC20.sol", "vault/ComponentVault.sol": "/opt/scenario/src/vault/ComponentVault.sol"}
+  },
+  "0xb30daf0240261be564cea33260f01213c47aaa0d": {
+    "path": "/opt/scenario/src/vault/ComponentVault.sol", "name": "ComponentVault",
+    "sources": {"token/ProtocolERC20.sol": "/opt/scenario/src/token/ProtocolERC20.sol", "vault/ComponentVault.sol": "/opt/scenario/src/vault/ComponentVault.sol"}
+  }
+}

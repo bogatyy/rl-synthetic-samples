@@ -4,16 +4,23 @@ set -euo pipefail
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 parallelism=${COUNTERFACTUAL_PARALLELISM:-4}
 tasks=(
-  12-kestrel 13-lantern 14-marrow 15-nimbus 16-opal
-  17-praxis 18-quartz 19-riven 20-sable 21-talus
-  22-umbra 23-verdant 24-willow 25-xenon 26-yarrow
-  27-zephyr 28-alder 29-bracken 30-cinder 31-dovetail
+  12-kestrel 14-marrow 15-nimbus 16-opal
+  17-praxis 18-quartz 21-talus
+  23-verdant 24-willow 25-xenon
+  29-bracken 30-cinder
 )
 
 [[ "$parallelism" =~ ^[1-9][0-9]*$ ]] || {
   echo "COUNTERFACTUAL_PARALLELISM must be a positive integer" >&2
   exit 2
 }
+
+# Counterfactual checks can be run independently of the runtime suite, so make
+# their task images current here as well. Isolated worktrees may opt out when
+# another checkout owns the shared tags.
+if [[ ${SKIP_IMAGE_BUILD:-0} != 1 ]]; then
+  "$repo_root/scripts/build_task_images.sh" "${tasks[@]}"
+fi
 
 validation_root=$(mktemp -d /tmp/rl-independent-counterfactual.XXXXXX)
 cleanup() {

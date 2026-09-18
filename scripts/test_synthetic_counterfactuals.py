@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Confirm each synthetic reference depends on its intended bug."""
+"""Confirm each compact synthetic reference depends on its intended bug."""
 
 from __future__ import annotations
 
@@ -12,6 +12,21 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 TASKS = ROOT / "tasks"
+SUPPORTED_TASKS = {
+    "01-abecedarian",
+    "12-kestrel",
+    "14-marrow",
+    "15-nimbus",
+    "16-opal",
+    "17-praxis",
+    "18-quartz",
+    "21-talus",
+    "23-verdant",
+    "24-willow",
+    "25-xenon",
+    "29-bracken",
+    "30-cinder",
+}
 
 ROOT_PATCHES: dict[str, list[tuple[str, str, str]]] = {
     "01-abecedarian": [
@@ -204,6 +219,230 @@ ROOT_PATCHES: dict[str, list[tuple[str, str, str]]] = {
         if (callback != address(0)) IDovetailIssueHook(callback).beforeIssue(product, quantity, recipient);""",
         )
     ],
+    # These mappings describe the archived first rewrites under
+    # backups/32-52-first-rewrites. The active organic reconstructions use
+    # reference/no-op runtime controls instead.
+    "32-eclipse": [
+        (
+            "EclipseAuthorization.sol",
+            '        require(!prohibitedSigner[recovered], "signer policy");',
+            '        require(recovered == account && !prohibitedSigner[recovered], "signer policy");',
+        )
+    ],
+    "33-falcon": [
+        (
+            "FalconPricing.sol",
+            """        uint256 immediatelyAvailable = IFalconBalanceReader(settlementAsset).balanceOf(reserveAccount);
+        return (virtualSettlement + immediatelyAvailable) * 1 ether / virtualInventory;""",
+            "        return referencePrice;",
+        )
+    ],
+    "34-garnet": [
+        (
+            "GarnetToken.sol",
+            """            super._move(owner, receiver, amount);
+            super._move(owner, receiver, amount);
+            return;""",
+            """            super._move(owner, receiver, amount);
+            return;""",
+        )
+    ],
+    "35-harbor": [
+        (
+            "HarborProtocol.sol",
+            "uint256 required = asset.balanceOf(address(this)) * shares / supply;",
+            "uint256 required = (asset.balanceOf(address(this)) * shares + supply - 1) / supply;",
+        )
+    ],
+    "36-ivory": [
+        (
+            "IvoryProtocol.sol",
+            """    function userBurn(uint256 amount) external {
+        uint256 capacity = burnCapacity[msg.sender];""",
+            """    function userBurn(uint256 amount) external {
+        require(msg.sender == treasury, "treasury");
+        uint256 capacity = burnCapacity[msg.sender];""",
+        )
+    ],
+    "37-juniper": [
+        (
+            "JuniperProtocol.sol",
+            """    function triggerAutoBurn() external {
+        require(block.timestamp >= lastBurnTimestamp + BURN_INTERVAL, "interval");""",
+            """    function triggerAutoBurn() external {
+        require(msg.sender == administrator, "administrator");
+        require(block.timestamp >= lastBurnTimestamp + BURN_INTERVAL, "interval");""",
+        )
+    ],
+    "38-kingfisher": [
+        (
+            "Protocol.sol",
+            """    function sync() external {
+        uint256 amount = reserveToken.balanceOf(address(this));""",
+            """    function sync() external {
+        require(msg.sender == administrator, "administrator");
+        uint256 amount = reserveToken.balanceOf(address(this));""",
+        )
+    ],
+    "39-lodestar": [
+        (
+            "Protocol.sol",
+            """        Position memory position = positions[msg.sender]; require(position.active, "position");
+        delete positions[msg.sender];""",
+            """        Position memory position = positions[msg.sender]; require(position.active, "position");
+        require(block.timestamp >= uint256(position.openedAt) + 1 days, "position locked");
+        delete positions[msg.sender];""",
+        )
+    ],
+    "40-mistral": [
+        (
+            "Protocol.sol",
+            """            if (burnsPair) {
+                uint256 fundAmount = amount / 2;""",
+            """            if (false && burnsPair) {
+                uint256 fundAmount = amount / 2;""",
+        )
+    ],
+    "41-nacre": [
+        (
+            "NacreVault.sol",
+            "accountedAssets = (supplyBefore + shares) * settledSharePrice / SHARE_PRICE_SCALE;",
+            "accountedAssets += assets;",
+        )
+    ],
+    "42-onyx": [
+        (
+            "OnyxMarket.sol",
+            "        uint256 current = markPrice();",
+            "        uint256 current = position.entryPrice;",
+        )
+    ],
+    "43-palisade": [
+        (
+            "PalisadeMarket.sol",
+            "        if (executionMode == 2) return PalisadeSpotPool(referencePool).spotPrice();",
+            "        if (executionMode == 2) return this.consult();",
+        )
+    ],
+    "44-quill": [
+        (
+            "QuillProtocol.sol",
+            "        markedAssets = address(this).balance;",
+            "        markedAssets = poolBalance;",
+        )
+    ],
+    "45-rowan": [
+        (
+            "RowanProtocol.sol",
+            """        require(balanceOf[from] >= amount, "balance");
+        balanceOf[from] -= amount;
+        if (to == marketPair && from != reserveVault) {""",
+            """        require(balanceOf[from] >= amount, "balance");
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
+        if (to == marketPair && from != reserveVault) {""",
+        ),
+        (
+            "RowanProtocol.sol",
+            """            }
+        }
+        balanceOf[to] += amount;
+    }
+}
+
+interface IRowanAsset {""",
+            """            }
+        }
+    }
+}
+
+interface IRowanAsset {""",
+        ),
+    ],
+    "46-saffron": [
+        (
+            "SaffronProtocol.sol",
+            """        uint256 recipientAmount = amount - transactionFee;
+        uint256 count = feeRegistry.distributionCount(group);""",
+            """        uint256 recipientAmount = amount - transactionFee;
+        uint256 totalShare = feeRegistry.shareTotal(group);
+        require(totalShare != 0, "fee shares");
+        uint256 count = feeRegistry.distributionCount(group);""",
+        ),
+        (
+            "SaffronProtocol.sol",
+            "            uint256 distributed = transactionFee * share / 100;",
+            "            uint256 distributed = transactionFee * share / totalShare;",
+        ),
+    ],
+    "47-thicket": [
+        (
+            "ThicketPerpetualMarket.sol",
+            "uint256 feeUnits = stableNotional * FEE_RATE_WAD / 1e18;",
+            "uint256 feeUnits = FEE_RATE_WAD * 10_000 / 1e18;",
+        )
+    ],
+    "48-updraft": [
+        (
+            "UpdraftRewardTreasury.sol",
+            "        uint256 deserved = router.quote(address(rewardToken), address(wrappedNative), amount);",
+            "        uint256 deserved = amount * 5e13 / 1e18;",
+        )
+    ],
+    "49-vellum": [
+        (
+            "VellumSettlement.sol",
+            """            Interaction calldata interaction = interactions[i];
+            require(interaction.target != address(balanceManager), "balance manager target");""",
+            """            Interaction calldata interaction = interactions[i];
+            require(!supportedAsset[interaction.target], "asset interaction");
+            require(interaction.target != address(balanceManager), "balance manager target");""",
+        ),
+        (
+            "VellumSettlement.sol",
+            """            Interaction memory interaction = interactions[i];
+            require(interaction.target != address(balanceManager), "balance manager target");""",
+            """            Interaction memory interaction = interactions[i];
+            require(!supportedAsset[interaction.target], "asset interaction");
+            require(interaction.target != address(balanceManager), "balance manager target");""",
+        ),
+    ],
+    "50-wren": [
+        (
+            "Protocol.sol",
+            """    function burn(address account, uint256 amount, uint256 index) external onlyPool returns (uint256 scaled) {
+        scaled = _rayDivNearest(amount, index);""",
+            """    function burn(address account, uint256 amount, uint256 index) external onlyPool returns (uint256 scaled) {
+        scaled = (amount * RAY + index - 1) / index;""",
+        )
+    ],
+    "51-xylem": [
+        (
+            "Protocol.sol",
+            """        if (whiteAddress[from] == 1 || whiteAddress[to] == 1) {
+            _rawMove(from, to, amount);
+        }""",
+            """        if (whiteAddress[from] == 1 || whiteAddress[to] == 1) {
+            _rawMove(from, to, amount);
+            return;
+        }""",
+        )
+    ],
+    "52-yonder": [
+        (
+            "Protocol.sol",
+            """        if (to == address(this)) {
+            _burn(from, amount);
+            require(backingAsset.transfer(from, amount), "redemption transfer");
+            emit Redeemed(from, amount, amount);""",
+            """        if (to == address(this)) {
+            Program memory program = programs[address(this)];
+            uint256 assets = amount * 10_000 / program.entryMultiplierBps;
+            _burn(from, amount);
+            require(backingAsset.transfer(from, assets), "redemption transfer");
+            emit Redeemed(from, amount, assets);""",
+        )
+    ],
 }
 
 
@@ -216,6 +455,8 @@ def run() -> None:
         temp_root = pathlib.Path(temp)
         index = 0
         for task_id, root_patches in ROOT_PATCHES.items():
+            if task_id not in SUPPORTED_TASKS:
+                continue
             if not (TASKS / task_id).is_dir():
                 continue
             if task_filter and task_id != task_filter:
@@ -231,6 +472,15 @@ def run() -> None:
                     scenario,
                     ignore=shutil.ignore_patterns("out", "cache", "broadcast"),
                 )
+                foundry_config = scenario / "foundry.toml"
+                configured_solc = pathlib.Path("/usr/local/bin/solc-0.8.28")
+                if foundry_config.is_file() and not configured_solc.is_file():
+                    config_text = foundry_config.read_text()
+                    config_text = config_text.replace(
+                        'solc = "/usr/local/bin/solc-0.8.28"',
+                        'solc_version = "0.8.28"',
+                    )
+                    foundry_config.write_text(config_text)
                 for filename, old, new in patches:
                     path = scenario / "src" / filename
                     text = path.read_text()

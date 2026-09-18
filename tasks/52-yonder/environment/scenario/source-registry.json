@@ -1,0 +1,27 @@
+{
+  "0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0": {
+    "path": "/opt/scenario/src/Vollar/AVD(2025-7-3) (BSC).sol",
+    "sources_root": "/opt/scenario/src/Vollar",
+    "name": "Vollar"
+  },
+  "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9": {
+    "path": "/opt/scenario/src/MarketContracts.sol",
+    "name": "FixtureStable"
+  },
+  "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9": {
+    "path": "/opt/scenario/src/MarketContracts.sol",
+    "name": "MarketPair"
+  },
+  "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707": {
+    "path": "/opt/scenario/src/MarketContracts.sol",
+    "name": "MarketRouter"
+  },
+  "0x0165878a594ca255338adfa4d48449f69242eb8f": {
+    "path": "/opt/scenario/src/MarketContracts.sol",
+    "name": "MoolahFlashLender"
+  },
+  "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853": {
+    "path": "/opt/scenario/src/MarketContracts.sol",
+    "name": "LockedAuthority"
+  }
+}

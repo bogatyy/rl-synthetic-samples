@@ -1,0 +1,9 @@
+# Preserve imported production sources byte-for-byte.
+tasks/120-org-sable/environment/.dockerignore -whitespace
+tasks/120-org-sable/environment/scenario/.dockerignore -whitespace
+tasks/120-org-sable/environment/scenario/src/FixtureCrocQuery.sol -whitespace
+tasks/120-org-sable/environment/scenario/src/ambient/** -whitespace
+tasks/34-garnet/environment/scenario/src/production/** -whitespace
+tasks/45-rowan/environment/scenario/src/production/** -whitespace
+tasks/46-saffron/environment/scenario/src/MetaverseToken.sol -whitespace
+tasks/46-saffron/environment/scenario/src/PancakeFactory.sol -whitespace

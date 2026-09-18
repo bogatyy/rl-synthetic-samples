@@ -102,7 +102,9 @@ def add_local_services(
         "healthcheck": {
             "test": [
                 "CMD-SHELL",
-                "cast block-number --rpc-url http://127.0.0.1:8545 >/dev/null",
+                "test -f /tmp/rl-task-scenario.ready && "
+                "test \"$(cast code \"$$SCENARIO_TARGET_ADDRESS\" "
+                "--rpc-url http://127.0.0.1:8545)\" != 0x",
             ],
             "interval": "1s",
             "timeout": "2s",

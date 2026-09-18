@@ -12,6 +12,7 @@ from policy_gateway import (
     local_source_response,
     load_local_source_registry,
     safe_backend_error,
+    source_bundle_from_root,
     validate_source_query,
 )
 
@@ -123,6 +124,7 @@ class SourcePolicyTests(unittest.TestCase):
             body = json.loads(local_source_response(str(path), "Scenario"))
         self.assertEqual(body["status"], "1")
         self.assertEqual(body["result"][0]["ContractName"], "Scenario")
+        self.assertEqual(body["result"][0]["CompilerType"], "solc")
         self.assertIn("contract Scenario", body["result"][0]["SourceCode"])
 
     def test_local_source_response_can_return_a_standard_json_bundle(self):
@@ -151,6 +153,57 @@ class SourcePolicyTests(unittest.TestCase):
         self.assertIn("Primary.sol", standard_input["sources"])
         self.assertIn("Dependency.sol", standard_input["sources"])
 
+    def test_local_source_response_reports_exact_vyper_metadata(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "CurveYPool.vy"
+            path.write_text("@external\ndef A() -> uint256:\n    return 2048\n")
+            source = path.read_text()
+            body = json.loads(
+                local_source_response(
+                    str(path),
+                    "CurveYPool",
+                    metadata={
+                        "language": "Vyper",
+                        "compiler_version": "vyper:0.1.0b16",
+                        "optimization_used": True,
+                        "optimizer_runs": 1,
+                        "evm_version": "petersburg",
+                        "license_type": "None",
+                    },
+                )
+            )
+        result = body["result"][0]
+        self.assertEqual(result["SourceCode"], source)
+        self.assertEqual(result["CompilerType"], "vyper")
+        self.assertEqual(result["CompilerVersion"], "vyper:0.1.0b16")
+        self.assertEqual(result["OptimizationUsed"], "1")
+        self.assertEqual(result["Runs"], "1")
+        self.assertEqual(result["EVMVersion"], "petersburg")
+
+    def test_vyper_bundle_uses_vyper_standard_json_language(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            primary = root / "Primary.vy"
+            dependency = root / "Dependency.vy"
+            primary.write_text("import Dependency as dependency\n")
+            dependency.write_text("VALUE: constant(uint256) = 1\n")
+            body = json.loads(
+                local_source_response(
+                    str(primary),
+                    "Primary",
+                    {
+                        "Primary.vy": str(primary),
+                        "Dependency.vy": str(dependency),
+                    },
+                    {"language": "Vyper"},
+                )
+            )
+        standard_input = json.loads(body["result"][0]["SourceCode"])
+        self.assertEqual(standard_input["language"], "Vyper")
+        self.assertEqual(
+            set(standard_input["sources"]), {"Primary.vy", "Dependency.vy"}
+        )
+
     def test_local_source_registry_maps_separate_contracts(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
@@ -174,6 +227,157 @@ class SourcePolicyTests(unittest.TestCase):
                 loaded = load_local_source_registry(str(registry))
         self.assertEqual(loaded[address.lower()][1], "Module")
         self.assertIn("Module.sol", loaded[address.lower()][2])
+
+    def test_source_bundle_root_excludes_trusted_setup_and_build_outputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            (root / "src" / "deps").mkdir(parents=True)
+            (root / "script").mkdir()
+            (root / "out").mkdir()
+            (root / "src" / "Main contract.sol").write_text(
+                "pragma solidity ^0.8.28; contract Main {}"
+            )
+            (root / "src" / "deps" / "Library.sol").write_text(
+                "pragma solidity ^0.8.28; library Library {}"
+            )
+            (root / "script" / "Setup.s.sol").write_text(
+                "pragma solidity ^0.8.28; contract Setup {}"
+            )
+            (root / "out" / "Generated.sol").write_text(
+                "pragma solidity ^0.8.28; contract Generated {}"
+            )
+            bundle = source_bundle_from_root(str(root))
+        self.assertEqual(
+            set(bundle), {"src/Main contract.sol", "src/deps/Library.sol"}
+        )
+
+    def test_vyper_source_bundle_excludes_solidity_and_trusted_setup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            (root / "src").mkdir()
+            (root / "script").mkdir()
+            (root / "src" / "Pool.vy").write_text("A: public(uint256)\n")
+            (root / "src" / "Unrelated.sol").write_text("contract Unrelated {}")
+            (root / "script" / "Setup.vy").write_text("pass\n")
+            bundle = source_bundle_from_root(str(root), "Vyper")
+        self.assertEqual(set(bundle), {"src/Pool.vy"})
+
+    def test_local_source_registry_accepts_vyper_per_entry_metadata(self):
+        with tempfile.TemporaryDirectory() as directory:
+            registry = pathlib.Path(directory) / "registry.json"
+            address = "0x" + "bc" * 20
+            primary = "/opt/scenario/src/CurveYPool.vy"
+            registry.write_text(
+                json.dumps(
+                    {
+                        address: {
+                            "path": primary,
+                            "name": "CurveYPool",
+                            "sources": {"CurveYPool.vy": primary},
+                            "language": "Vyper",
+                            "compiler_version": "vyper:0.1.0b16",
+                            "optimization_used": True,
+                            "optimizer_runs": 1,
+                            "evm_version": "petersburg",
+                            "license_type": "None",
+                        }
+                    }
+                )
+            )
+            with mock.patch.object(pathlib.Path, "is_file", return_value=True):
+                loaded = load_local_source_registry(str(registry))
+        entry = loaded[address]
+        self.assertEqual(entry[0], primary)
+        self.assertEqual(entry[2], {"CurveYPool.vy": primary})
+        self.assertEqual(entry[3]["language"], "Vyper")
+        self.assertEqual(entry[3]["compiler_version"], "vyper:0.1.0b16")
+
+    def test_local_source_registry_expands_a_source_bundle_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            registry = pathlib.Path(directory) / "registry.json"
+            address = "0x" + "34" * 20
+            primary = "/opt/scenario/src/Package/Main contract.sol"
+            registry.write_text(
+                json.dumps(
+                    {
+                        address: {
+                            "path": primary,
+                            "name": "Main",
+                            "sources_root": "/opt/scenario/src/Package",
+                        }
+                    }
+                )
+            )
+            with (
+                mock.patch.object(pathlib.Path, "is_file", return_value=True),
+                mock.patch(
+                    "policy_gateway.source_bundle_from_root",
+                    return_value={"Main contract.sol": primary},
+                ),
+            ):
+                loaded = load_local_source_registry(str(registry))
+        self.assertEqual(loaded[address.lower()][2], {"Main contract.sol": primary})
+
+    def test_local_source_registry_rejects_traversal_in_source_path(self):
+        with tempfile.TemporaryDirectory() as directory:
+            registry = pathlib.Path(directory) / "registry.json"
+            address = "0x" + "56" * 20
+            registry.write_text(
+                json.dumps(
+                    {
+                        address: {
+                            "path": "/opt/scenario/src/../../outside.sol",
+                            "name": "Outside",
+                        }
+                    }
+                )
+            )
+            with self.assertRaisesRegex(ValueError, "registry entry is invalid"):
+                load_local_source_registry(str(registry))
+
+    def test_local_source_registry_rejects_traversal_in_bundle_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            registry = pathlib.Path(directory) / "registry.json"
+            address = "0x" + "78" * 20
+            registry.write_text(
+                json.dumps(
+                    {
+                        address: {
+                            "path": "/opt/scenario/src/Main.sol",
+                            "name": "Main",
+                            "sources": {
+                                "Main.sol": "/opt/scenario/src/../Main.sol"
+                            },
+                        }
+                    }
+                )
+            )
+            with (
+                mock.patch.object(pathlib.Path, "is_file", return_value=True),
+                self.assertRaisesRegex(ValueError, "bundle entry is invalid"),
+            ):
+                load_local_source_registry(str(registry))
+
+    def test_local_source_registry_rejects_traversal_in_bundle_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            registry = pathlib.Path(directory) / "registry.json"
+            address = "0x" + "9a" * 20
+            registry.write_text(
+                json.dumps(
+                    {
+                        address: {
+                            "path": "/opt/scenario/src/Main.sol",
+                            "name": "Main",
+                            "sources_root": "/opt/scenario/../outside",
+                        }
+                    }
+                )
+            )
+            with (
+                mock.patch.object(pathlib.Path, "is_file", return_value=True),
+                self.assertRaisesRegex(ValueError, "bundle root is invalid"),
+            ):
+                load_local_source_registry(str(registry))
 
     def test_backend_errors_redact_credential_urls(self):
         message = (

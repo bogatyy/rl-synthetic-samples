@@ -53,6 +53,20 @@ class ComposePolicyTests(unittest.TestCase):
         )
         self.assertNotIn("default", str(compose["services"]))
 
+    def test_policy_waits_for_completed_scenario_setup(self):
+        services = local_compose()["services"]
+        anvil_health = " ".join(services[ANVIL_SERVICE]["healthcheck"]["test"])
+        self.assertIn("/tmp/rl-task-scenario.ready", anvil_health)
+        self.assertIn("$$SCENARIO_TARGET_ADDRESS", anvil_health)
+        self.assertEqual(
+            services[POLICY_SERVICE]["depends_on"],
+            {ANVIL_SERVICE: {"condition": "service_healthy"}},
+        )
+        self.assertEqual(
+            services["main"]["depends_on"],
+            {POLICY_SERVICE: {"condition": "service_healthy"}},
+        )
+
     def test_no_external_chain_credentials_exist(self):
         compose = local_compose()
         rendered = str(compose).upper()

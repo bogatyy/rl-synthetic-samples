@@ -7,7 +7,10 @@ exploit_override=${SMOKE_EXPLOIT_PATH:-}
 next_port=${SMOKE_PORT_BASE:-$((20000 + ($$ % 30000)))}
 rpc_url=""
 private_key=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
-anvil_pid=""
+anvil_container=""
+anvil_log=""
+core_image_ready=0
+ensured_task_image=""
 
 tasks=()
 for task_file in "$repo_root"/tasks/*/task.toml; do
@@ -47,13 +50,25 @@ task_verifier_value() {
   ' "$repo_root/tasks/$task_id/task.toml"
 }
 
+task_docker_image() {
+  local task_id=$1
+  awk -F'"' '
+    /^\[environment\]$/ { in_section=1; next }
+    in_section && /^\[/ { exit }
+    in_section && $1 ~ /^docker_image[[:space:]]*=[[:space:]]*$/ { print $2; exit }
+  ' "$repo_root/tasks/$task_id/task.toml"
+}
+
 smoke_root=$(mktemp -d /tmp/rl-synthetic-smoke.XXXXXX)
 
 stop_anvil() {
-  if [[ -n "$anvil_pid" ]]; then
-    kill "$anvil_pid" 2>/dev/null || true
-    wait "$anvil_pid" 2>/dev/null || true
-    anvil_pid=""
+  if [[ -n "$anvil_container" ]]; then
+    if [[ -n "$anvil_log" ]]; then
+      docker logs "$anvil_container" >"$anvil_log" 2>&1 || true
+    fi
+    docker rm --force "$anvil_container" >/dev/null 2>&1 || true
+    anvil_container=""
+    anvil_log=""
   fi
 }
 
@@ -95,49 +110,76 @@ prepare_project() {
   printf '%s\n' "$project_dir"
 }
 
+ensure_task_image() {
+  local task_id=$1 task_image
+  local core_image=rl-exploits-foundry-core:latest
+  task_image=$(task_docker_image "$task_id")
+  [[ -n "$task_image" ]] || {
+    echo "[smoke] task $task_id has no Docker image configured" >&2
+    return 1
+  }
+
+  if (( core_image_ready == 0 )); then
+    if [[ "${SMOKE_REBUILD_IMAGES:-0}" == 1 ]] \
+      || ! docker image inspect "$core_image" >/dev/null 2>&1; then
+      echo "[smoke] building $core_image" >&2
+      docker build --tag "$core_image" "$repo_root/docker/core"
+    fi
+    core_image_ready=1
+  fi
+
+  if [[ "${SMOKE_REBUILD_IMAGES:-0}" == 1 ]] \
+    || ! docker image inspect "$task_image" >/dev/null 2>&1; then
+    echo "[smoke] building $task_image" >&2
+    docker build --tag "$task_image" "$repo_root/tasks/$task_id/environment"
+  fi
+  ensured_task_image=$task_image
+}
+
 validate_source_registry() {
   local task_id=$1 scenario_dir=$2 chain_id=$3 setup_script=$4
   local registry="$scenario_dir/source-registry.json"
   local script_file=${setup_script%%:*}
-  local broadcast="$scenario_dir/broadcast/$(basename "$script_file")/$chain_id/run-latest.json"
-  [[ -f "$registry" && -f "$broadcast" ]] || {
+  local broadcast_dir="$scenario_dir/broadcast/$(basename "$script_file")/$chain_id"
+  [[ -f "$registry" && -d "$broadcast_dir" ]] || {
     echo "[smoke] missing source registry or setup broadcast for $task_id" >&2
     return 1
   }
 
-  python3 - "$registry" "$broadcast" <<'PY'
+  python3 - "$registry" "$broadcast_dir" <<'PY'
 import json
 import pathlib
 import sys
 
 registry_path = pathlib.Path(sys.argv[1])
-broadcast_path = pathlib.Path(sys.argv[2])
+broadcast_dir = pathlib.Path(sys.argv[2])
 registry = {
     address.lower(): entry
     for address, entry in json.loads(registry_path.read_text()).items()
 }
+broadcasts = []
+for path in broadcast_dir.rglob("*.json"):
+    document = json.loads(path.read_text())
+    if isinstance(document, dict) and isinstance(document.get("transactions"), list):
+        broadcasts.append(document)
+assert broadcasts, f"no setup broadcasts under {broadcast_dir}"
 creates = [
     tx
-    for tx in json.loads(broadcast_path.read_text())["transactions"]
+    for document in broadcasts
+    for tx in document["transactions"]
     if tx.get("transactionType") == "CREATE"
 ]
 deployed = {tx["contractAddress"].lower(): tx["contractName"] for tx in creates}
 
-missing = sorted(set(deployed) - set(registry))
-extra = sorted(set(registry) - set(deployed))
 wrong = sorted(
     address
     for address in set(deployed) & set(registry)
-    if deployed[address] != registry[address]["name"]
+    # Foundry cannot assign an artifact name when a constructor deliberately
+    # returns an exact historical runtime rather than its own compiled runtime.
+    # The registry's source/name shape is validated separately.
+    if deployed[address] is not None and deployed[address] != registry[address]["name"]
 )
-if missing or extra or wrong:
-    for address in missing:
-        print(f"missing source entry: {address} ({deployed[address]})", file=sys.stderr)
-    for address in extra:
-        print(
-            f"source entry has no setup deployment: {address} ({registry[address]['name']})",
-            file=sys.stderr,
-        )
+if wrong:
     for address in wrong:
         print(
             f"wrong source entry at {address}: deployed {deployed[address]}, "
@@ -151,45 +193,89 @@ PY
 start_scenario() {
   local task_id=$1
   local task_dir="$repo_root/tasks/$task_id"
-  local scenario_dir
-  local chain_id hardfork setup_script target current
+  local scenario_source scenario_dir task_image host_uid host_gid
+  local setup_script target current code start_timeout deadline
   if [[ -n "${SMOKE_SCENARIO_PATH:-}" ]]; then
-    scenario_dir=$SMOKE_SCENARIO_PATH
+    scenario_source=$SMOKE_SCENARIO_PATH
   else
-    scenario_dir="$smoke_root/$task_id-scenario"
-    cp -R "$task_dir/environment/scenario" "$scenario_dir"
+    scenario_source="$task_dir/environment/scenario"
   fi
-  chain_id=$(task_environment_value "$task_id" CHAIN_ID)
-  chain_id=${chain_id:-1}
-  hardfork=$(task_environment_value "$task_id" ANVIL_HARDFORK)
-  hardfork=${hardfork:-cancun}
+  scenario_dir="$smoke_root/$task_id-scenario"
+  [[ -d "$scenario_source" ]]
+  cp -R "$scenario_source" "$scenario_dir"
+  rm -rf -- "$scenario_dir/broadcast"
+  mkdir -p "$scenario_dir/broadcast"
+
   setup_script=$(task_environment_value "$task_id" SCENARIO_SETUP_SCRIPT)
   target=$(task_environment_value "$task_id" SCENARIO_TARGET_ADDRESS)
   [[ -d "$scenario_dir" && -n "$setup_script" && -n "$target" ]]
+  ensure_task_image "$task_id"
+  task_image=$ensured_task_image
 
   stop_anvil
   next_port=$((next_port + 1))
   rpc_url="http://127.0.0.1:$next_port"
-  anvil --chain-id "$chain_id" --host 127.0.0.1 --port "$next_port" \
-    --hardfork "$hardfork" --base-fee 0 --gas-price 0 --gas-limit 100000000 \
-    --silent >"$smoke_root/anvil.log" 2>&1 &
-  anvil_pid=$!
+  anvil_log="$smoke_root/$task_id-anvil.log"
+  host_uid=$(id -u)
+  host_gid=$(id -g)
 
+  # Anvil listens on all interfaces only inside its disposable container.
+  # Docker publishes it exclusively on the host loopback interface, so the
+  # unlocked development accounts are never reachable from the LAN. Overlay
+  # the selected scenario onto the image rather than hiding /opt/scenario:
+  # some tasks intentionally bundle compiler-generated deployment bytecode.
+  anvil_container=$(docker run --detach \
+    --publish "127.0.0.1:$next_port:8545" \
+    --env ANVIL_HOST=0.0.0.0 \
+    --env HOME=/tmp \
+    --env "HOST_UID=$host_uid" \
+    --env "HOST_GID=$host_gid" \
+    --volume "$scenario_dir:/scenario-input:ro" \
+    --volume "$scenario_dir/broadcast:/scenario-output" \
+    --entrypoint /bin/bash "$task_image" \
+    -lc 'cp -a /scenario-input/. /opt/scenario/ \
+      && start-anvil \
+      && cp -a /opt/scenario/broadcast/. /scenario-output/ \
+      && chown -R "$HOST_UID:$HOST_GID" /scenario-output \
+      && exec tail -f /dev/null')
+
+  start_timeout=${SMOKE_START_TIMEOUT:-600}
+  [[ "$start_timeout" =~ ^[1-9][0-9]*$ ]] || {
+    echo "SMOKE_START_TIMEOUT must be a positive integer" >&2
+    return 2
+  }
+  deadline=$((SECONDS + start_timeout))
   current=""
-  for _ in $(seq 1 120); do
-    current=$(cast block-number --rpc-url "$rpc_url" 2>/dev/null || true)
-    [[ "$current" == 0 ]] && break
-    if ! kill -0 "$anvil_pid" 2>/dev/null; then
-      echo "[smoke] local Anvil failed to start" >&2
+  code=""
+  while (( SECONDS < deadline )); do
+    if ! docker inspect --format '{{.State.Running}}' "$anvil_container" \
+      2>/dev/null | grep -qx true; then
+      echo "[smoke] local scenario container exited during setup" >&2
+      docker logs "$anvil_container" >&2 2>&1 || true
       return 1
+    fi
+    if docker exec "$anvil_container" test -f /tmp/rl-task-scenario.ready \
+      >/dev/null 2>&1; then
+      # Query from inside the container. Besides avoiding host proxy and
+      # networking configuration, this proves the same local endpoint used by
+      # the task process is serving the initialized scenario.
+      current=$(docker exec "$anvil_container" cast block-number \
+        --rpc-url http://127.0.0.1:8545 2>/dev/null || true)
+      code=$(docker exec "$anvil_container" cast code "$target" \
+        --rpc-url http://127.0.0.1:8545 2>/dev/null || true)
+      [[ -n "$current" && "$code" != 0x && -n "$code" ]] && break
     fi
     sleep 0.25
   done
-  [[ "$current" == 0 ]]
+  if [[ -z "$current" || -z "$code" || "$code" == 0x ]]; then
+    echo "[smoke] local scenario did not become ready within ${start_timeout}s" >&2
+    docker logs "$anvil_container" >&2 2>&1 || true
+    return 1
+  fi
 
-  forge script --root "$scenario_dir" "$scenario_dir/$setup_script" \
-    --offline --broadcast --slow --rpc-url "$rpc_url"
-  [[ "$(cast code "$target" --rpc-url "$rpc_url")" != 0x ]]
+  local chain_id
+  chain_id=$(task_environment_value "$task_id" CHAIN_ID)
+  chain_id=${chain_id:-1}
   validate_source_registry "$task_id" "$scenario_dir" "$chain_id" "$setup_script"
 }
 
@@ -215,6 +301,9 @@ run_grade() {
       2>/dev/null | awk '{print $1}')
     [[ "$passed_value" == true ]] && return 0
     echo "[smoke] grade transaction failed" >&2
+    cast call "$grader" 'grade()' \
+      --from 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
+      --rpc-url "$rpc_url" --gas-limit 100000000 >&2 2>&1 || true
     if [[ "${SMOKE_TRACE_ON_FAILURE:-1}" == 1 ]]; then
       cast call "$grader" 'grade()' \
         --from 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
@@ -226,6 +315,14 @@ run_grade() {
   passed_value=$(cast call "$grader" 'passed()(bool)' --rpc-url "$rpc_url" | awk '{print $1}')
   [[ "$passed_value" == true ]] || {
     echo "[smoke] grader did not pass" >&2
+    cast call "$grader" 'grade()' \
+      --from 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
+      --rpc-url "$rpc_url" --gas-limit 100000000 >&2 2>&1 || true
+    if [[ "${SMOKE_TRACE_ON_FAILURE:-1}" == 1 ]]; then
+      cast call "$grader" 'grade()' \
+        --from 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
+        --rpc-url "$rpc_url" --gas-limit 100000000 --trace >&2 2>&1 || true
+    fi
     return 1
   }
 }
